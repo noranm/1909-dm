@@ -1,0 +1,153 @@
+---
+title: "1711508_노혜림_hw3"
+author: "1711508 노혜림"
+date: '2019 11 4 '
+output: html_document
+---
+### 사용 라이브러리 : glmnet, caret, e1071
+```{r}
+library(glmnet)
+library(caret)
+library(e1071)
+setwd("c:/datamining")
+```
+
+# 10.4 eBay.com의 경쟁적인 경매
+```{r}
+ebay.df <- read.csv("ebayAuctions.csv", header=TRUE, stringsAsFactors = FALSE)
+
+head(ebay.df)
+dim(ebay.df)
+```
+
+## a.
+
+```{r}
+data.frame(tapply(ebay.df$Competitive., ebay.df$Category, mean))
+data.frame(tapply(ebay.df$Competitive., ebay.df$currency, mean))
+data.frame(tapply(ebay.df$Competitive., ebay.df$endDay, mean))
+data.frame(tapply(ebay.df$Competitive., ebay.df$Duration, mean))
+
+names(ebay.df)
+# CATEGORY 변수 범주 혼합
+#table(ebay.df$Category) #확인
+ebay.df$Category[ebay.df$Category == "Business/Industrial"] <- "Business/Industrial/Computer"
+ebay.df$Category[ebay.df$Category == "Computer"] <- "Business/Industrial/Computer"
+ebay.df$Category[ebay.df$Category == "Antique/Art/Craft"] <- "Antique/Art/Craft/Collectibles"
+ebay.df$Category[ebay.df$Category == "Collectibles"] <- "Antique/Art/Craft/Collectibles"
+#table(ebay.df$Category) #확인
+
+# ENDDAY 변수 범주 혼합
+#table(ebay.df$Category) #확인
+ebay.df$endDay[ebay.df$endDay == "Sun"] <- "Sun_Wed"
+ebay.df$endDay[ebay.df$endDay == "Wed"] <- "Sun_Wed"
+#table(ebay.df$Category) #확인
+```
+**Category 변수**에서는 
+"Books"(0.50)와 "Clothing/Accessories"(0.5042) 범주 혼합.
+"Business/Industrial"(0.667)과 "Computer"(0.667) 범주 혼합
+**endDay 변수**에서는
+"Sun"(0.485)와 "Wed"(0.480) 범주 혼합.
+
+### 범주 혼합 후에, ebay.df를 factor로 바꾸어, 가변수 생성하였다.
+범주형 예측변수들의 가변수 생성,
+물품항목(18), 화폐단위(3), 경매종료일(월-일), 경매기간(1,3,5,7,10)
+```{r}
+ebay.df$Category <- as.factor(ebay.df$Category)
+ebay.df$Category <- relevel(ebay.df$Category, ref = "Music/Movie/Game")
+ebay.df$currency <- as.factor(ebay.df$currency)
+ebay.df$currency <- relevel(ebay.df$currency, ref = "US")
+ebay.df$endDay <- as.factor(ebay.df$endDay)
+ebay.df$endDay <- relevel(ebay.df$endDay, ref = "Mon")
+ebay.df$Duration <- factor(ebay.df$Duration, levels = c(1,3,5,7,10),
+                          labels = c("1d","3d","5d","7d","10d"))
+```
+
+## b.
+```{r}
+# 데이터 분할 training 60%, valid 40%
+set.seed(52)
+train.rows <- sample(rownames(ebay.df), dim(ebay.df)[1]*0.6)
+valid.rows <- setdiff(rownames(ebay.df), train.rows)
+train.data <- ebay.df[train.rows,]
+valid.data <- ebay.df[valid.rows,]
+
+# glm 적합
+ebay.glm <- glm(Competitive. ~ ., data = train.data, family = "binomial")
+summary(ebay.glm)$coef
+# 예측
+pred <- predict(ebay.glm, valid.data[,-8], type = "response")
+head(table(pred))
+
+# 정오 행렬
+table("predicted" = 1*(pred>0.5), "actual" = valid.data$Competitive.)
+```
+
+## c. 경매종가를 제외한 로지스틱 회귀분석 (6번 column)
+```{r}
+# 경매 시작시의 경쟁적인 경매 예측 -> start : st.ebay.glm
+# glm 적합
+st.ebay.glm <- glm(Competitive. ~ ., data = train.data[,-6], family = "binomial")
+summary(st.ebay.glm)
+# 예측
+st.pred <- predict(st.ebay.glm, valid.data[,-c(6,8)], type="response")
+head(table(st.pred))
+# 정오 행렬
+table("predicted" = 1*(st.pred>0.5), "actual" = valid.data$Competitive.)
+```
+
+종가 가격을 제외한 데이터를 이용하여 모델에 적합시켰을 때, 정오행렬은 다음과 같다.
+종가 가격을 제외하면, 실제로 비경쟁적인 경매를 경쟁적인 경매로 잘못 판단하는 경우가 늘어나, 정확도가 떨어진다. 이 정오행렬만을 생각하였을 때에는 종가 가격 변수가 경쟁적인 경매를 판단할 때 중요한 변수로 생각된다.
+
+## d.
+
+경매종가 변수의 p-value 는 매우 작으며(***, 0에 가까움), 통계적 관점에서 설명력이 유의미한 것으로 판단된다. 추정값은  0.1032로, 경매종가 가격이 증가 할 때, 경쟁적인 경매의 오즈는 exp(0.1032) = 1.1087 배씩 증가한다.
+
+하지만, 종가 가격 자체를 모델 적합시 사용하는 것은 실질적인 의미가 없다. 왜냐하면 경매가 종료되었을 때 이미 우리는 어떤 경매가 최소 두 번 이상의 입찰이 존재하였는지 알고 있으며, 종가 가격 자체가 경매가 종료되었을 때 얼마나 경쟁적이 경매였는지 말해주는 또 다른 지표이기도 하다. 그러므로 모델 적합시에 이 변수를 사용하는 것은 옳지 않다. 뒤의 분석에서는 이 변수를 사용하지 않고 진행한다. 
+
+## f.
+```{r}
+# glmnet을 사용하여 모델구축
+ebay.glmnet <- cv.glmnet(x = as.matrix(model.matrix(~ ., train.data[,-c(6,8)])[,-1]),
+                       y = as.numeric(train.data[,8]), 
+                       family = "binomial")
+names(ebay.glmnet)
+coef(ebay.glmnet, lambda.opt = "min")
+ebay.glmnet$lambda.min
+ebay.glmnet$lambda.1se
+
+# 예측
+glmnet.pred <- predict(ebay.glmnet, as.matrix(model.matrix(~ . , valid.data[,-c(6,8)])[,-1]), type="response", lambda.opt = "min")
+head(table(glmnet.pred))
+# 정오 행렬
+table("predicted" = 1*(glmnet.pred>0.5), "actual" = valid.data$Competitive.)
+
+```
+람다 값은 lambda.min = 0.002023879이고, lambda.1se = 0.01567016(1-standard error rule 적용) 이다. 사용된 예측 변수는 CategoryAutomotive, CategoryBooks, CategoryBusiness/Industrial/Computer, CategoryClothing/Accessories, CategoryCoins/Stamps, CategoryElectronics, CategoryEverythingElse,CategoryHealth/Beauty, CategoryJewelry, CategoryPhotography, CategoryPottery/Glass, CategorySportingGoods, currencyGBP, sellerRating, Duration5d, endDaySat, endDaySun_Wed, endDayTue, OpenPrice 변수가 예측 변수로 사용된다.
+
+## g.
+정오행렬로 예측 하였을 때, b를 제외한 모델 중에서는 경매 종가를 제외한 모든 변수를 사용하여 glm으로 적합한 c 모델의 예측이 가장 좋았다. 하지만 대부분의 변수를 사용하였기에, 차원의 복잡성이 너무 높다는 문제가 있다. 이는 현재 valid set으로 적합하였을 때에는 큰 문제가 발생하지 않았지만, 다른 새로운 데이터가 들어왔을 때, train set에 과적합으로 인한 정확도가 떨어질 수 있다.
+
+## h.
+train set을 이용하여 모델을 구축하기 위해서는 해당 데이터셋을 잘 설명하도록 적합하기 위해 변수의 수가 많아져야 한다. 이는 잘 적합한 모델이지만 train set에 과적합된 모델이기에 새로운 데이터가 들어왔을 때 잘 예측하는 모델은 아니다. 이러한 이유로 잘 예측하는 모델과 잘 적합된 모델은 다르다고 생각한다.
+
+## i.
+```{r}
+# g의 이유로 i문제에서는 glmnet으로 적합한 모델을 사용했다.
+for (c in seq(0.3,0.7,0.01)) {
+  predicted <- 1*(glmnet.pred > c)
+  u <- union(predicted, valid.data$Competitive.)
+  t <- table(factor(predicted, u), factor(valid.data$Competitive., u))              
+  cm <- confusionMatrix(t)
+  cat(" Cut-off : ", c, ", accuracy : ", cm$overall[1],"\n")
+}
+```
+Cut-off :  0.54 , accuracy :  0.643853 일 때 가장 높은 accuracy를 가짐을 확인했다. 그러므로 더욱 정확한 분류를 위해서 0.54의 컷오프를 사용하는 것이 적절하다. 
+
+## j.
+```{r}
+estimation <- coef(ebay.glmnet, lambda.opt = "min")[,1]
+exp.est <- exp(coef(ebay.glmnet, lambda.opt = "min"))[,1] 
+cbind(estimation, exp.est)
+```
+화폐의 단위를 GBP를 사용할 때(exp(0.3245) = 1.383 배), 경매 기간이 5일일 때(exp(0.7425) = 2.1011 배), 경매 마감 요일이 월요일(참조값) 일 때, 시작 가격이 낮을 때, 경쟁적인 경매로 이어질 가능성이 높다.

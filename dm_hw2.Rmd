@@ -1,0 +1,326 @@
+---
+title: "dm_hw2"
+author: "1711508 노혜림"
+date: '2019 10 9 '
+output: html_document
+---
+**라이브러리는 'MASS', 'arules', 'recommederlab' 사용했습니다.**
+
+# 1. (연관규칙) 주교재 연습문제 14.4 (cosmetics.csv)
+```{r}
+setwd("C:/datamining/")
+cosmetic <- read.csv("Cosmetics.csv")
+head(cosmetic,5)
+```
+
+## a. 
+trans(1) 의 장바구니에는 Blush, Nail.Polish, Brushes, Concealer, Bronzer, Lip.liner, Mascara, Eyeliner 가 있다. trans(2)의 장바구니에는 Nail.Polish, Concealer, Bronzer, Lip.liner, Foundation, Lip.Gloss 가 있다. 앞에서와 같이 한 transaction에서 변수의 값이 1이면 장바구니 안에 있음을, 0이면 없음을 의미한다.
+
+## b.
+### 1) 
+__{조건부 : Blush, Concealer, Mascara, Eye.Shadow, Lipstick}__ 을 구매했을 때, __{결론부 : Eyebrow.Pencils}__ 를 함꼐 구매하였을 확률이 첫 번째 행의 confidence 이다. 조건부의 아이템을 구매하였을 때 Eyebrow.Pencils도 구매했을 확률은 *0.3023* 이다. 
+
+_Rule = if {Blush, Concealer, Mascara, Eye.shadow, Lipstick} then {Eyebrow.Pencils}_
+${\bf Confidenc \ of \ Rule} = {\bf Pr(결론부|조건부)} = \frac{\bf Pr(조건부∩결론부)}{\bf Pr(조건부)} = {\bf 0.3023}$
+
+### 2) 
+첫 행의 Support 는 앞의 Rule 에서 조건부와 결론부를 모두 구매하였을 경우가 얼마나 빈벌하게 나타나는지를 알려주는 값이다. ${\bf Support \ of \ Rule} = {\bf Pr(조건부∪결론부)} = {\bf 0.013}$
+
+### 3) 
+Lift 는 조건부와 결론부가 독립(조건부의 구매와 결론부의 구매는 연관성이 없음)일 때의 confidence 보다 얼마나 더 높은 confidenc를 가졌는지 알려준다. 다음의 lift는 7.1982로 조건부와 결론부가 독립하였을 때 기대할 수 있는 것보다 훨씬 크다. 
+${Lift} = \frac{Pr(신뢰도)}{Pr(기준신뢰도)} = {\bf 7.198}$
+
+### 4) 
+첫 번째 행의 규칙은 __{Blush, Concealer, Mascara, Eye.shadow, Lipstick}__ 을 구매했을 때 __{Eyebrow.Pencils}__ 또한 구매하는 것이며 이 규칙의 신뢰도는 30.23 % 이다. 조건부와 결론부가 독립이라고 가정하였을 때보다 *7.1982배* 높은 값이다. 하지만 이 규칙은 낮은 지지도를 갖는 대신 매우 높은 향상비를 가진다. 이는 적은 양의 거래들로만 영향을 받는 것이기에 규칙의 유용성이 떨어질 수도 있다.
+
+## c.
+```{r}
+library(arules)
+cosmetic.mat <- as.matrix(cosmetic[,-1])
+cosmetic.trans <- as(cosmetic.mat, "transactions") 
+rules <- apriori(cosmetic.trans) # 기본(디폴트) 파라미터 값 이용
+cosmetic.rule <- inspect(sort(rules, by="lift"))
+```
+### 1)
+[1] _IF {Brushes} THEN {Nail.Polish}_ : Brushes 를 구매했을 때, Nail.Polish 를 함께 구매할 확률은 100%이고, 두 아이템이 연관성이 없을 때 보다 3.57배 높은 확률을 갖고 있음을 알 수 있다.
+[2] _IF {Brusehs, Concealer, EyeShadow} THEN {Mascara}_ : Brusehs, Concealer, EyeShadow 를 구매했을 때, Mascara 를 함께 구매할 확률은 95.96%이고, 두 아이템이 연관성이 없을 때 보다  2.688배 높은 값을 갖고 있음을 알 수 있다.
+[3] _IF {Brushes, EyeShadow} THEN {Mascara}_ : Brusehs, EyeShadow 를 구매했을 때, Mascara 를 함께 구매할 확률은 92.86%이고, 두 아이템이 연관성이 없을 때 보다  2.601배 높은 값을 갖고 있음을 알 수 있다.
+
+### 2)
+2, 3행을 보면 {Blush, Eye.shadow}가 겹치는 것을 볼 수 있고, Concealer의 유무와 상관없이 Mascara를 추천해준다. 또한 아래에서도 Eye.Shadow 가 조건이 되면 Mascara를 추천해주고, Mascara 가 조건에 들어가면 Eye.Shadow를 추천해준다. 이는 중복성이 많이 나타난다고 생각되며 효용성이 떨어진다고 생각한다.
+
+# 2. (협업필터링) 주교재 연습문제 14.5 (courserating.csv)
+
+```{r}
+library(recommenderlab)
+courserating <- read.csv("Courserating.csv")
+courserating
+
+rownames(courserating) <- courserating[,1]
+courserating.mat <- as.matrix(courserating[,-1])
+course.realmatrix <- as(courserating.mat, "realRatingMatrix")
+
+```
+
+## a. UBCF, corr 계산
+
+EN은 LN, MH, JH, DU, DS 와 corr 계산이 가능하고 나머지의 개체는 공통된 쌍이 없기에 계산이 불가능하다.
+_Corr(EN, LN) = 0.870388_,  _Corr(EN, MH) = -1_, _Corr(EN, JH) = 0_,
+_Corr(EN, DU) = 0_ , _Corr(EN, DS) = 0_ 이다.
+
+## b. 
+EN 학생과 LN 학생은 Corr 이 __0.87__ 로 가장 높은 관계성을 갖고 있다. EN 학생에게 LN 이 들은 과목 중 EN이 안들었으며 그 중에서 가장 높게 평가한 __PYTHON(3)__ 과목을 추천하면 좋을 것이다.
+
+## c. COS SIM
+
+```{R}
+similarity(course.realmatrix, method = "cosine")
+```
+## d.
+EN 학생과 DU, DS 학생이 CosSim 이 높게 나왔다. 함꼐 SQL을 높게 평가한 DU 학생은 Spatial 또한 높게 평가하였기에 __Spatial__ 을 추천해주거나 함께 SQK 과 R Prog를 재밌게 들은 DS 학생이 2로 평가한 __DM in R__ 의 추천을 고려하면 될 것이다.
+
+## e.
+Corr 유사도는 두 학생의 겹치는 순서쌍을 이용하여 두 변수간의 corr 을 구하는 것으로 실제 corr 공식과 유사하다. 계산할 때, 겹치는 순서쌍 외에도 각 학생의 평균을 구해서 사용한다.
+Cosine 유사도도 겹치는 순서쌍을 이용하여 두 벡터간의 각도를 이용해 유사도를 계산한다. 이는 corr유사도와 달리 계산할 때 겹치는 순서쌍만을 이용한다.
+
+## f. IBCF 적용해보기.
+```{R}
+course.ibcf <-  Recommender(course.realmatrix,"IBCF")
+pred.i <- predict(course.ibcf, course.realmatrix, type = "ratings")
+as(pred.i, "matrix")
+```
+위의 표는 ibcf 로 각 학생의 점수 평가를 예측한 결과이다.
+
+# 3. (군집분석) 주교재 연습문제 15.1(university.csv)
+```{R}
+university <- read.csv("Universities.csv")
+row.names(university) <- paste(university[,"College.Name"], "in", university[,"State"])
+university$Public..1...Private..2.[university['Public..1...Private..2.'] == 1] = 'public'
+university$Public..1...Private..2.[university['Public..1...Private..2.'] == 2] = 'private'
+# 제대로 row name 설정되었는지 확인
+head(university[,1:2])
+
+# university 의 구조 확인
+dim(university)
+colSums(is.na(university))
+str(university)
+```
+## a. 결측 레코드 제거
+```{r}
+university2 <- na.omit(university)
+# 제거되었음을 확인
+dim(university2)
+colSums(is.na(university2))
+```
+## b. 정규화 후, 유클리드 거리와 완전 연결법 군집 수 확인
+```{r}
+# 명목형 제거
+university.df <- university2[,c(-1,-2,-3)]
+university.norm <- sapply(university.df, scale)
+d.norm <- dist(university.norm, method="euclidean")
+hc1 <- hclust(d.norm, method="complete")
+plot(hc1, hang=-1, ann=FALSE)
+```
+
+12개의 군집이 좋을 것이라 판단했다. 더 군집의 개수가 많아진다면, 거리로 인하여 하나의 개체만 포함된 군집이 너무 많이 생성되고, 또 군집의 개수를 더 줄인다면, 군집1에 너무 많은 개체가 포함되기 때문이다.
+
+## c. 각 그룹의 요약통계량 비교
+``` {R}
+memb <- cutree(hc1, k=12)
+memb2 <- cbind(memb, university.df)
+# 정확한 값 해석을 위해 표준화 이 전의 변수를 이용하여 mean 구함.
+univ.gmean <- aggregate(memb2, by = list(memb2$memb), mean)
+univ.gmean
+```
+'x..appli..rec' received 된 학생의 수는 group5,6,8,10이 높고 12가 구분되게 높음을 알 수 있다. 'x..appl..accepted' 는 또한 group 5,6,8,10 이 높고 12가 구분되게 높다. 각 그룹 별 'x..appli..rec' 가 높은 그룹은 'x..appl..accpeted'도 높음을 알 수 있다. 그리고 'x..new.stud..enrolled' 등록된 학생의 수는 group 3, 5, 6, 8, 10, 12 가 높다. 역시 또한 앞의 두 변수가 높음에 따라 새로 등록된 학생의 수도 높음을 알 수 있다. 
+그리고 'x..new.stud..from.top.10'(%) 을 보고 group7이 많음을 알 수 있으며, 'x..new.sutd..from.top.25'(%) 을 보고 또한 group7이 많음을 보아 top에 해당하는 학생이 group7에 많음을 알 수 있다. 
+'x..FT.undergrad' 와 'x..pt.undergrad' 를 통해 ft학부생이 많은 그룹 3,5,6,8,10,12 가 pt 학부생이 많음을 알 수 있었다. 
+'in.state.tuition' 과 'out.of.state.tuition' 을 보고 그룹1, 2, 6, 7, 9, 11 은 지역내와 밖의 수업료가 비슷한 특징을 가지고 있는데, 이는 뒤의 _범주형 변수_ 파트를 보면 그렇기에 1,2,6 그룹에는 다양한 지역에서 사람이 왔음을 확인할 수 있다. 
+'room' 과 'board'는 그룹별 유사해보이는데 이 중에서 그룹 6, 9가 큰 편이다. 이는 학생의 수가 많은 6은 당연히 room과 board의 수가 많은 것이지만 9는 학생의 수가 적으면서도 room, board가 많은 특징이 있는 그룹이다.
+'add..fees'를 보았을 때 그룹 8, 12 가 다른 그룹에 비해 입학금이 비싼 그룹임을 알 수 있다.
+'estmi..book.costs' 를 보면 그룹 7과 9가 다른 그룹에 비해 책 비용이 많이드는 학교임을 알 수 있다.
+'estim..personal..' 이 높은 그룹은 11이고, 'x..fac..w.PHD' 는 그룹별 유의한 차이는 보이지 않는다.
+## d. 명목형 변수 사용해서 해석
+```{r}
+univ.g <- data.frame(cbind(memb, university2[,3]))
+# group별 private/public 
+par(mfrow= c(1,2))
+# g1
+g1 <- table(univ.g$V2[univ.g["memb"] == 1])
+barplot(g1, 
+        main = "bar plot of group1")
+# g2
+g2 <- table(univ.g$V2[univ.g["memb"] == 2])
+barplot(g2, 
+        main = "bar plot of group2")
+# g3
+g3 <- table(univ.g$V2[univ.g["memb"] == 3])
+barplot(g3, 
+        main = "bar plot of group3")
+# g4
+g4 <- table(univ.g$V2[univ.g["memb"] == 4])
+barplot(g4, 
+        main = "bar plot of group4")
+# g5
+g5 <- table(univ.g$V2[univ.g["memb"] == 5])
+barplot(g5, 
+        main = "bar plot of group5")
+# g6
+g6 <- table(univ.g$V2[univ.g["memb"] == 6])
+barplot(g6, 
+        main = "bar plot of group6")
+# g7
+g7 <- table(univ.g$V2[univ.g["memb"] == 7])
+barplot(g7, 
+        main = "bar plot of group7")
+# g8
+g8 <- table(univ.g$V2[univ.g["memb"] == 8])
+barplot(g8, 
+        main = "bar plot of group8")
+# g9
+g9 <- table(univ.g$V2[univ.g["memb"] == 9])
+barplot(g9, 
+        main = "bar plot of group9")
+# g10
+g10 <- table(univ.g$V2[univ.g["memb"] == 10])
+barplot(g10, 
+        main = "bar plot of group10")
+# g11
+g11 <- table(univ.g$V2[univ.g["memb"] == 11])
+barplot(g11, 
+        main = "bar plot of group11")
+# g12
+g12 <- table(univ.g$V2[univ.g["memb"] == 12])
+barplot(g12, 
+        main = "bar plot of group12")
+
+```
+
+**군집내 개체가 1인 그룹을 제외하고, group1,2,6 은 private 가, group3,4,5 는 public 으로 값이 몰려있음을 확인했다.**
+```{R}
+univ.g2 <- data.frame(cbind(memb, university2[,"State"]))
+# group별 state
+# g1
+g1_st <- table(univ.g2$V2[univ.g["memb"] == 1])
+barplot(g1_st, 
+        main = "bar plot of group1")
+# g2
+g2_st <- table(univ.g2$V2[univ.g["memb"] == 2])
+barplot(g2_st, 
+        main = "bar plot of group2")
+# g3
+g3_st <- table(univ.g2$V2[univ.g["memb"] == 3])
+barplot(g3_st, 
+        main = "bar plot of group3")
+# g4
+g4_st <- table(univ.g2$V2[univ.g["memb"] == 4])
+barplot(g4_st, 
+        main = "bar plot of group4")
+par(mfrow= c(1,2))
+# g5
+g5_st <- table(univ.g2$V2[univ.g["memb"] == 5])
+barplot(g5_st, 
+        main = "bar plot of group5")
+# g6
+g6_st <- table(univ.g2$V2[univ.g["memb"] == 6])
+barplot(g6_st, 
+        main = "bar plot of group6")
+# g7
+g7_st <- table(univ.g2$V2[univ.g["memb"] == 7])
+barplot(g7_st, 
+        main = "bar plot of group7")
+# g8
+g8_st <- table(univ.g2$V2[univ.g["memb"] == 8])
+barplot(g8_st, 
+        main = "bar plot of group8")
+# g9
+g9_st <- table(univ.g2$V2[univ.g["memb"] == 9])
+barplot(g9_st, 
+        main = "bar plot of group9")
+# g10
+g10_st <- table(univ.g2$V2[univ.g["memb"] == 10])
+barplot(g10_st, 
+        main = "bar plot of group10")
+# g11
+g11_st <- table(univ.g2$V2[univ.g["memb"] == 11])
+barplot(g11_st, 
+        main = "bar plot of group11")
+# g12
+g12_st <- table(univ.g2$V2[univ.g["memb"] == 12])
+barplot(g12_st, 
+        main = "bar plot of group12")
+
+```
+
+**하나의 개체만 포함되어 있는 군집 외에는 모두 한 군집 안에 다양한 state 들이 나타남을 확인할 수 있었다. state와 군집들 사이에는 관계가 없어 보인다.**
+
+## e.
+```{r}
+colnames(university)
+```
+위의 변수 외에도 창학 이 후 몇 주년인지 혹은 교직원의 수 등의 변수를 추가적으로 고려해보면 좋을 것 같다.
+
+## f. 결측값이 있는 Tufts University
+```{R}
+colSums(is.na(university['Tufts University in MA',]))
+Tufts <- data.frame(university['Tufts University in MA',])
+rownames(univ.gmean) <- univ.gmean$memb
+#g.mean과 TUfts 를 결합
+tufts.num <- Tufts[,c(-1,-2,-3)]
+univ2 <-  rbind(univ.gmean[,c(-1,-2)], tufts.num)
+univ2.norm <- sapply(univ2, scale)
+d.norm <- dist(univ2.norm, method="euclidean")
+d.norm
+```
+__Tufts university 는 7번 째 그룹의 평균들과  1.945789로 유클리디안 거리가 가장 가깝고 그룹 7로 묶인다.__
+```{R}
+a <- mean(memb2$X..PT.undergrad[memb2["memb"]==7])
+university['Tufts University in MA', 'X..PT.undergrad'] = a
+university['Tufts University in MA', 'X..PT.undergrad']
+```
+
+# 4. X
+
+# 5. 
+## a.
+선정한 데이터셋 heart.csv 는 환자의 특성을 기록해둔 데이터로, 이러한 변수들에 따른 환자의 심장병 유무를 분류하여 새로운 환자의 심장병 발병 유무를 예측하는 문제이다. (2) 분류
+
+## b.
+```{R}
+# heart2.csv 는 hw1을 통해 전처리된 데이터셋
+heart2 <- read.csv("heart2.csv")
+# 결측 제거
+heart.rm <- na.omit(heart2)
+
+# 데이터 분할 training 60%, valid 40%
+set.seed(52)
+train.rows <- sample(rownames(heart.rm), dim(heart.rm)[1]*0.6)
+valid.rows <- setdiff(rownames(heart.rm), train.rows)
+train.data <- heart.rm[train.rows,]
+valid.data <- heart.rm[valid.rows,]
+
+library(MASS)
+# library(forecast)
+mod.train <- glm(target~., data=train.data, family = 'binomial')
+mod.train2 <- stepAIC(mod.train, direction="both")
+
+pred <- predict(mod.train2, valid.data[,-14], type="response")
+reg.pred <- data.frame(actual=valid.data$target, predicted=pred)
+head(reg.pred,10)
+```
+
+logistic regression 을 통해, 선택된 변수 sex + cp + trestbps + chol + restecg + thalach + oldpeak + slope + ca + thal 에 따른 target 일 확률을 예측하였다.
+
+```{r}
+table(heart.rm$target)
+# 사전확률 거의 비슷함 > 임의로 0.5 설정
+reg.pred$predicted[reg.pred$predicted >= 0.5] = 1
+reg.pred$predicted[reg.pred$predicted < 0.5] = 0
+
+actual0 <- table(reg.pred$predicted[reg.pred$actual==0])
+actual1 <- table(reg.pred$predicted[reg.pred$actual==1])
+
+count <- rbind(actual0, actual1)
+count
+```
+train 셋으로 만든 모델을 valid 데이터셋에 적용하였을 떄, 실제로 0 인데 1로 판단한 사람은 28명, 실제로 1인데 0으로 판단한 사람은 34명이다. 오분류된 사람의 비율은 (34+28)/(162+28+34+176) = 0.155로 작아보이나, 실제로 심장병이 있는데, 없다고 했을 경우가 34건이나 되기에 다른 모델 또한 고려해보는 것이 좋을 것 같다.
